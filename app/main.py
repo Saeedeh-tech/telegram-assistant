@@ -69,11 +69,12 @@ def telegram_webhook():
     if not security.is_allowed_user(user_id):
         return jsonify(status="unauthorised"), 200
 
-    if not text:
-        telegram.send_message(chat_id, "I can only read text messages for now.")
-        return jsonify(status="unsupported"), 200
-
+    # Everything below is wrapped: Telegram retries on any non-2xx reply, so a
+    # failure here must still answer 200 rather than trigger a retry loop.
     try:
+        if not text:
+            telegram.send_message(chat_id, "I can only read text messages for now.")
+            return jsonify(status="unsupported"), 200
         if text.startswith("/") and _handle_command(chat_id, text):
             return jsonify(status="command"), 200
         telegram.send_typing(chat_id)
