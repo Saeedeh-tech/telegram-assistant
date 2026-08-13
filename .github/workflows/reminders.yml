@@ -1,0 +1,22 @@
+name: Deliver reminders
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the service and deliver due reminders
+        env:
+          SERVICE_URL: ${{ secrets.SERVICE_URL }}
+          TASKS_SECRET: ${{ secrets.TASKS_SECRET }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail \
+               --retry 3 --retry-delay 15 --retry-all-errors \
+               --max-time 120 \
+               -X POST "${SERVICE_URL%/}/tasks/due-reminders" \
+               -H "X-Tasks-Secret: ${TASKS_SECRET}"
