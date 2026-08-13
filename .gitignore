@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+sa-key.json
+.env
+.env.yaml
+setup.env
+.secrets

@@ -1,0 +1,35 @@
+services:
+  - type: web
+    name: telegram-assistant
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app.main:app
+    healthCheckPath: /healthz
+    envVars:
+      # sync false means Render asks you for the value instead of storing it here.
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        sync: false
+      - key: ALLOWED_TELEGRAM_USER_IDS
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: CALENDAR_ID
+        sync: false
+      - key: SERVICE_ACCOUNT_JSON
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: TASKS_SECRET
+        sync: false
+      - key: TELEGRAM_CONTACTS
+        value: "{}"
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: TIMEZONE
+        value: Australia/Perth
+      - key: PYTHON_VERSION
+        value: "3.12.8"
