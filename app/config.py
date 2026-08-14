@@ -45,16 +45,39 @@ TIMEZONE_NAME = os.environ.get("TIMEZONE", "Australia/Perth")
 LOCAL_TZ = ZoneInfo(TIMEZONE_NAME)
 
 def _optional_hour(name: str, default: str) -> int | None:
-    """An hour 0-23, or None when set to off or left blank."""
-    raw = os.environ.get(name, default).strip().lower()
+    """An hour 0-23, or None when set to off or left blank.
+
+    Accepts the shapes people actually type: 7, 07, 7am, 2pm, 07:00.
+    """
+    raw = os.environ.get(name, default).strip().lower().replace(" ", "")
     if raw in ("", "off", "none", "false"):
         return None
+
+    suffix = ""
+    for marker in ("am", "pm"):
+        if raw.endswith(marker):
+            suffix, raw = marker, raw[: -len(marker)]
+            break
+    raw = raw.split(":")[0]
+
     try:
         hour = int(raw)
-    except ValueError as exc:
-        raise ConfigError(f"{name} must be an hour 0-23, or 'off'") from exc
+    except ValueError:
+        raise ConfigError(
+            f"{name} is set to '{os.environ.get(name)}'. It must be an hour "
+            f"0-23 such as 7, or 'off' to disable."
+        ) from None
+
+    if suffix == "pm" and hour < 12:
+        hour += 12
+    elif suffix == "am" and hour == 12:
+        hour = 0
+
     if not 0 <= hour <= 23:
-        raise ConfigError(f"{name} must be between 0 and 23")
+        raise ConfigError(
+            f"{name} is set to '{os.environ.get(name)}', which is not an hour "
+            f"between 0 and 23."
+        )
     return hour
 
 
