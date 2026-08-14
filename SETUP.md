@@ -89,7 +89,7 @@ It asks for a name (anything, like `My Assistant`) and a username (must end with
 It replies with a long token:
 
 ```
-8012345678:AAHf9x2QwErTyUiOpAsDfGhJkLzXcVbNm00
+PLACEHOLDER-1234567:your-long-token-goes-here
 ```
 
 **Write this down. Value 1 of 6.** Anyone with this token can control your bot.
@@ -228,7 +228,7 @@ Create a project. Pick the region closest to you — **Singapore** or **Sydney**
 Neon shows you a connection string:
 
 ```
-postgresql://neondb_owner:abc123@ep-cool-name.ap-southeast-1.aws.neon.tech/neondb?sslmode=require
+postgres-URL://USER:PASSWORD@ep-your-endpoint.neon.tech/neondb?sslmode=require
 ```
 
 **Copy it. Value 5 of 6.**
@@ -240,7 +240,14 @@ reminders will use a tiny part of that.
 
 ## Part 4 — Put the code on GitHub
 
-10 minutes. Choose **Route A** (website, no install) or **Route B** (terminal).
+10 minutes. Choose **Route A** (GitHub Desktop app) or **Route B** (PowerShell).
+
+Route A is a normal Windows app with buttons, so nothing is typed. Route B is
+typed commands, and makes every future update a single line. Both handle folders
+and hidden files correctly. Either one works.
+
+Do **not** use the GitHub website upload page. It cannot add folders. There is an
+explanation at the end of this part if you want to know why.
 
 ### First: make your two random passwords
 
@@ -263,64 +270,79 @@ The second one is your `TASKS_SECRET`.
 
 **Write both down. Value 6 of 6.** Paste them into a text file for now.
 
-### Make the empty repository
+### Route A — GitHub Desktop (recommended, no terminal)
 
-Both routes need this first.
+This is the reliable UI way. GitHub Desktop uploads folders and hidden files
+correctly, which the website upload page often will not.
+
+**A1. Install it**
+
+Go to `desktop.github.com`, download for Windows, and install it. Open it and
+click **Sign in to GitHub.com**. Sign in with your browser when it asks.
+
+**A2. Add your folder**
+
+In GitHub Desktop: **File** menu → **Add local repository** → **Choose...** →
+pick your `telegram-assistant` folder (the one with `requirements.txt` in it).
+
+It will say *"This directory does not appear to be a Git repository"*. That is
+expected. Click the blue words **create a repository** in that message.
+
+A window opens. Check these:
+
+- **Name**: `telegram-assistant`
+- **Git ignore**: leave as **None**. Your folder already has the right one.
+- **License**: **None**
+
+Click **Create repository**.
+
+**A3. Commit**
+
+You now see a list of about 21 files on the left. That is everything, including
+the hidden ones.
+
+At the bottom left there is a box that says **Summary (required)**. Type:
+
+```
+First version
+```
+
+Click **Commit to main**.
+
+**A4. Publish**
+
+Click the blue **Publish repository** button at the top.
+
+**Important: leave "Keep this code private" ticked.**
+
+Click **Publish repository**. Done.
+
+**A5. Check it worked**
+
+Go to `github.com` and open your `telegram-assistant` repository. You should see
+`requirements.txt`, `render.yaml` and the `app` folder listed.
+
+Click into `.github` → `workflows`. You should see `reminders.yml` there.
+
+> Already made an empty `telegram-assistant` repository on the website earlier?
+> Delete it first, or GitHub Desktop cannot publish under that name. On the
+> website: your repository → **Settings** → scroll to the very bottom →
+> **Delete this repository**.
+
+---
+
+### Route B — PowerShell
+
+**B1. Make the empty repository on the website**
 
 1. Go to `github.com` and sign in.
 2. Click the **+** at the top right → **New repository**.
 3. Name: `telegram-assistant`
 4. Choose **Private**.
 5. Do **not** tick "Add a README file". Leave it completely empty.
-6. Click **Create repository**.
+6. Click **Create repository**. Keep this page open.
 
-You now see a mostly empty page with some setup commands. Keep this page open.
-
----
-
-### Route A — GitHub website, no install needed
-
-**A1. Make hidden files visible in Windows**
-
-Two important files start with a dot, and Windows hides them by default:
-`.gitignore` and the `.github` folder. Without them, reminders will not work.
-
-Open the folder in File Explorer. Then:
-
-- **Windows 11**: click **View** → **Show** → tick **Hidden items**
-- **Windows 10**: click the **View** tab → tick **Hidden items**
-
-You should now see `.github` and `.gitignore` in the folder.
-
-**A2. Upload**
-
-On your empty GitHub page, click the link **uploading an existing file**.
-
-Now open your `telegram-assistant` folder in File Explorer. **Go inside the
-folder**, press `Ctrl+A` to select everything inside it, and drag it all onto the
-GitHub page.
-
-> This part matters. Drag the **things inside** the folder, not the folder
-> itself. If you drag the folder, GitHub puts everything one level too deep and
-> Render will not find your code.
-
-Wait for the file list to appear, then scroll down and click **Commit changes**.
-
-**A3. Check it worked**
-
-Your repository page should show `requirements.txt`, `render.yaml` and `README.md`
-in the top-level list. If instead you see a single folder named
-`telegram-assistant`, the drag went wrong. Delete the repository and try again
-from A2.
-
-Then click into `.github` → `workflows`. You should see `reminders.yml`. If that
-folder is missing, hidden items were still off in step A1.
-
----
-
-### Route B — Windows terminal
-
-**B1. Install Git**
+**B2. Install Git**
 
 In PowerShell:
 
@@ -328,36 +350,30 @@ In PowerShell:
 winget install --id Git.Git -e
 ```
 
-Close PowerShell and open it again, then check it worked:
+Close PowerShell and open it again, then check:
 
 ```powershell
 git --version
 ```
 
-If you see a version number, Git is ready.
-
-**B2. Tell Git who you are** (first time only)
+**B3. Tell Git who you are** (first time only)
 
 ```powershell
 git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
 
-**B3. Go to your folder**
+**B4. Go to your folder**
 
 ```powershell
 cd $HOME\Downloads\telegram-assistant
-```
-
-Change the path if you saved it somewhere else. Check you are in the right place:
-
-```powershell
 dir
 ```
 
-You should see `requirements.txt`, `render.yaml` and the `app` folder.
+You should see `requirements.txt` and the `app` folder in the output. If not,
+you are in the wrong folder. Look for the one with `requirements.txt` in it.
 
-**B4. Upload**
+**B5. Upload**
 
 ```powershell
 git init
@@ -368,15 +384,114 @@ git remote add origin https://github.com/YOUR-USERNAME/telegram-assistant.git
 git push -u origin main
 ```
 
-Replace `YOUR-USERNAME` with your GitHub username. The exact line is also on
-your GitHub page, so you can copy it from there.
+Replace `YOUR-USERNAME`. The exact line is on your GitHub page too.
 
-On the first push a browser window opens and asks you to sign in to GitHub.
-Sign in and it continues by itself. Windows remembers it after that.
+On the first push a browser window opens to sign you in. Windows remembers it
+after that.
 
-**B5. Check it worked**
+**B6. Check it worked**
 
-Refresh your GitHub page. You should see all the files listed.
+Refresh your GitHub page. You should see all the files, including a `.github`
+folder.
+
+---
+
+### Why not the website upload page?
+
+You may have tried **Add file → Upload files** and found you could not add the
+`app` or `.github` folders. That is a real limitation, not your mistake:
+
+- The **choose your files** button opens a normal Windows file picker, and file
+  pickers cannot select folders at all. Only files.
+- Folders can only be added by **dragging them from File Explorer onto the
+  page**, and even that does not work in every browser.
+
+GitHub Desktop has neither problem. That is why Route A uses it.
+
+If you still want to try dragging: open your `telegram-assistant` folder, press
+`Ctrl+A` inside it, and drag the selection onto the GitHub page. Drag the things
+*inside* the folder, not the folder itself.
+
+**Already uploaded most files and only the dot-names are missing?**
+
+This is the usual outcome. The uploader skips anything starting with a dot, so
+`.github` and `.gitignore` are the two that fail.
+
+You can create a file inside a folder that does not exist yet, by **typing the
+path**. Each `/` you type turns into a folder.
+
+*File 1 of 2 — the reminder timer*
+
+1. On your repository page, click **Add file** → **Create new file**
+2. In the name box at the top, type exactly:
+
+   ```
+   .github/workflows/reminders.yml
+   ```
+
+3. Paste this into the big box:
+
+```yaml
+name: Deliver reminders
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sweep:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wake the service and deliver due reminders
+        env:
+          SERVICE_URL: ${{ secrets.SERVICE_URL }}
+          TASKS_SECRET: ${{ secrets.TASKS_SECRET }}
+        run: |
+          set -euo pipefail
+          curl --silent --show-error --fail \
+               --retry 3 --retry-delay 15 --retry-all-errors \
+               --max-time 120 \
+               -X POST "${SERVICE_URL%/}/tasks/due-reminders" \
+               -H "X-Tasks-Secret: ${TASKS_SECRET}"
+```
+
+4. Click **Commit changes**, then **Commit changes** again.
+
+*File 2 of 2 — the private file list*
+
+1. **Add file** → **Create new file**
+2. Name it exactly `.gitignore`
+3. Paste this:
+
+```
+__pycache__/
+*.pyc
+sa-key.json
+.env
+.env.yaml
+setup.env
+.secrets
+```
+
+4. Click **Commit changes**.
+
+**Then check these three things on GitHub**
+
+1. `requirements.txt` is in the top-level list, not inside a folder
+2. `app/tools/notes.py` opens and has text in it
+3. `app/__init__.py` exists
+
+Number 3 catches a second trap: that file is very short, and some browsers skip
+it. If it is missing, create it the same way, named `app/__init__.py`, with this
+single line inside:
+
+```python
+"""Telegram personal assistant: calendar, notes, reminders and messaging."""
+```
+
+Repeat for any other missing file. Tedious for 21 files, which is why Route A
+exists, but fine for filling two or three holes.
 
 ---
 
@@ -397,25 +512,122 @@ Do not paste your bot token or the JSON key into any file in this folder.
 **5.1** Go to `render.com` and sign up with GitHub.
 
 **5.2** Click **New → Web Service** and pick your `telegram-assistant`
-repository. Render reads `render.yaml` and fills in most settings by itself.
+repository.
 
-Check that **Instance type** says **Free**.
+> Note: this page does **not** read `render.yaml`. That file is only used by
+> **New → Blueprint**. You are filling these in by hand, which is fine and takes
+> two minutes.
 
-**5.3** Render asks you for the secret values. Paste them in:
+Fill in the form:
 
-| Name | What to paste |
+| Field | Value |
 | --- | --- |
-| `TELEGRAM_BOT_TOKEN` | Value 1 |
-| `ALLOWED_TELEGRAM_USER_IDS` | Value 2 |
-| `SERVICE_ACCOUNT_JSON` | Value 3, the whole JSON text |
-| `GEMINI_API_KEY` | Value 4 |
-| `DATABASE_URL` | Value 5 |
-| `TELEGRAM_WEBHOOK_SECRET` | first random string from Value 6 |
-| `TASKS_SECRET` | second random string from Value 6 |
-| `CALENDAR_ID` | your Gmail address, or the Calendar ID from step 2.4 |
-| `GEMINI_MODEL` | the model ID from step 2.5 |
+| **Name** | `telegram-assistant` |
+| **Language** | `Python 3` |
+| **Branch** | `main` |
+| **Region** | Singapore (closest to Perth) |
+| **Root Directory** | leave empty |
+| **Build Command** | `pip install -r requirements.txt` |
+| **Start Command** | see below |
+| **Instance Type** | **Free** |
 
-**5.4** Click **Create Web Service**. The first build takes about 5 minutes.
+Start Command, all on one line:
+
+```
+gunicorn --bind 0.0.0.0:$PORT --workers 1 --threads 4 --timeout 120 app.main:app
+```
+
+**5.3 The secret values**
+
+Keep scrolling **down the same page**. There is a section called **Environment
+Variables**. This is what you were looking for. It is on the creation form, not
+a separate screen.
+
+The fastest way is the **Add from .env** button. Click it, then paste this whole
+block after replacing each `PASTE_...` part:
+
+```
+TELEGRAM_BOT_TOKEN=PASTE_VALUE_1
+ALLOWED_TELEGRAM_USER_IDS=PASTE_VALUE_2
+GEMINI_API_KEY=PASTE_VALUE_4
+DATABASE_URL=PASTE_VALUE_5
+TELEGRAM_WEBHOOK_SECRET=PASTE_FIRST_RANDOM_STRING
+TASKS_SECRET=PASTE_SECOND_RANDOM_STRING
+CALENDAR_ID=PASTE_YOUR_GMAIL_ADDRESS
+GEMINI_MODEL=gemini-3.7-flash
+THINKING_LEVEL=low
+TIMEZONE=Australia/Perth
+TELEGRAM_CONTACTS={}
+PYTHON_VERSION=3.12.8
+```
+
+Then add the last one **separately**, using **Add Environment Variable**:
+
+- **Key**: `SERVICE_ACCOUNT_JSON`
+- **Value**: the entire contents of the JSON file you downloaded in step 2.3
+
+Add it on its own because it contains `=` and `{` characters that can confuse
+the bulk paste box.
+
+**The safest way to copy it.** In PowerShell, replace the file name with yours:
+
+```powershell
+Get-Content "$HOME\Downloads\YOUR-FILE.json" -Raw | Set-Clipboard
+```
+
+Now paste straight into Render. This avoids missing a character, which is easy to
+do when selecting a long file by hand.
+
+Not sure which file it is? It is in your **Downloads** folder with a name like
+`my-assistant-472103-a1b2c3d4e5f6.json`. Check it is the right one:
+
+```powershell
+Get-Content "$HOME\Downloads\YOUR-FILE.json" -Raw | ConvertFrom-Json |
+    Select-Object type, project_id, client_email
+```
+
+You should see `type` is `service_account`, and a `client_email` ending in
+`.iam.gserviceaccount.com`. That email is the same one you shared your calendar
+with in step 2.4.
+
+**What it should look like.** It begins with `{` and ends with `}`, roughly 700
+to 2500 characters, something like this (values here are fake):
+
+```json
+{
+  "type": "service_account",
+  "project_id": "my-assistant-472103",
+  "private_key_id": "a1b2c3d4e5f6a7b8c9d0",
+  "private_key": "PLACEHOLDER - a long block starting with BEGIN PRIVATE KEY",
+  "client_email": "assistant-calendar@my-assistant-472103.iam.gserviceaccount.com",
+  "client_id": "112233445566778899000",
+  "token_uri": "https://oauth2.googleapis.com/token"
+}
+```
+
+**Four things that will break it:**
+
+- pasting only the `client_email` line
+- pasting the file path instead of the file contents
+- adding your own quotes around the whole thing
+- copying only part of it
+
+Any of these makes Render fail on startup with `JSONDecodeError` in the Logs tab.
+If you see that word, this variable is the cause.
+
+Do not change anything inside the file. The `\n` marks inside `private_key` must
+stay exactly as they are.
+
+**Lost the file?** Go back to step 2.3 and create a new key. Old keys keep
+working, and you can delete them later from the same page.
+
+**5.4** Open **Advanced** and set **Health Check Path** to:
+
+```
+/healthz
+```
+
+**5.5** Click **Deploy Web Service**. The first build takes about 5 minutes.
 
 When it finishes, Render shows your address at the top:
 
@@ -425,7 +637,10 @@ https://telegram-assistant-abcd.onrender.com
 
 **Copy it.** You need it twice below.
 
-**5.5 Connect Telegram to it**
+> Forgot one? You can add or fix any of these later in the **Environment** tab.
+> Render redeploys automatically when you save.
+
+**5.6 Connect Telegram to it**
 
 This tells Telegram where to send your messages. The easiest way is your browser.
 
@@ -465,35 +680,130 @@ Invoke-RestMethod -Method Post -Uri "https://api.telegram.org/bot$token/setWebho
 
 ## Part 6 — Turn on reminders
 
-2 minutes.
+Something has to poke your service every so often so due reminders get sent.
+Pick **one** of the two options below.
 
-In your GitHub repository: **Settings → Secrets and variables → Actions →
-New repository secret**. Add two:
+> **If GitHub Actions gave you a billing error**, that is expected and not your
+> fault. GitHub's free Actions minutes only cover **public** repositories.
+> Private repositories need a paid plan or a spending limit above zero. Your repo
+> is private, so Actions is blocked. Both options below solve it.
+
+### Option 1 — Make the repository public (simplest)
+
+Public repositories get unlimited free Actions minutes, so the workflow already
+in your repo starts working immediately.
+
+1. On your repository, go to **Settings**
+2. Scroll to the bottom, **Danger Zone** → **Change repository visibility**
+3. Choose **Make public** and confirm
+
+Then add the two secrets: **Settings → Secrets and variables → Actions → New
+repository secret**
 
 | Name | Value |
 | --- | --- |
 | `SERVICE_URL` | your Render address |
-| `TASKS_SECRET` | the same second random string |
+| `TASKS_SECRET` | the second random string from Value 6 |
 
-Then open the **Actions** tab, click **Deliver reminders**, and click **Run
-workflow** once to test it.
+Open the **Actions** tab, click **Deliver reminders**, then **Run workflow**.
 
-From now on it runs by itself every 30 minutes.
+**Is public safe here?** Yes. Nothing secret is in these files. Your tokens and
+keys live in Render and in GitHub Secrets, never in the code. GitHub keeps
+Secrets encrypted, hides them from logs, and does not give them to anyone who
+copies your repository. Someone reading your code learns nothing useful.
 
-> GitHub switches off scheduled workflows in a repository that has had no
-> activity for 60 days. If reminders stop one day, open the Actions tab and press
-> the enable button.
+If you would still rather keep it private, use Option 2.
 
----
+### Option 2 — cron-job.org (keeps your repo private)
 
-## Part 7 — Connect the calendar to your iPhone
+A free scheduling website. No credit card, no GitHub billing.
 
-**Settings → Apps → Calendar → Accounts → Add Account → Google**
+1. Go to `cron-job.org` and create a free account
+2. Click **Create cronjob**
+3. Fill it in:
 
-Sign in with the same Gmail account and turn **Calendars** on.
+| Field | Value |
+| --- | --- |
+| **Title** | `telegram assistant reminders` |
+| **URL** | `https://YOUR-RENDER-ADDRESS/tasks/due-reminders` |
+| **Schedule** | Every 30 minutes |
 
-Now events the bot creates appear in your normal Calendar app after about a
-minute.
+4. Open the **Advanced** tab:
+   - **Request method**: `POST`
+   - **Headers**: add one, name `X-Tasks-Secret`, value = your second random
+     string
+   - **Request timeout**: set it as high as it allows, around 300 seconds
+
+That timeout matters. Your Render service sleeps when idle and takes 30 to 60
+seconds to wake. With a short timeout, cron-job.org marks every run as failed and
+switches the job off after about 15 failures.
+
+5. Click **Create** and then **Test run**. You want a green result and a body
+   like `{"delivered":0,"failed":0}`.
+
+If you use this option, you can delete `.github/workflows/reminders.yml` from
+your repository. It will never run.
+
+### Either way, check it works
+
+Send your bot a message: *remind me to test this in 2 minutes*
+
+The reply confirms it is scheduled. The reminder itself arrives on the next
+sweep, so up to 30 minutes later. That is normal and expected.
+
+> If you chose Option 1: GitHub switches off scheduled workflows in a repository
+> with no activity for 60 days. If reminders stop one day, open the Actions tab
+> and press the enable button.
+
+## Part 7 — See your events on your iPhone
+
+**On your iPhone.** This cannot be done from a computer.
+
+Your events are already safe in Google Calendar the moment the bot creates them.
+This part is only about seeing them on your phone. Pick whichever app you
+actually use.
+
+### Route A — Google Calendar app (easiest, nothing to configure)
+
+Best if you do not use Apple's Calendar app.
+
+1. Open the **App Store**, search **Google Calendar**, install it
+2. Sign in with the same Gmail account you used for `CALENDAR_ID`
+
+Done. Bot events appear straight away. There are no settings to change.
+
+### Route B — Apple's built-in Calendar app
+
+Best if you already use Apple's Calendar for other things.
+
+**Do not have it?** It can be deleted, so it may be missing. First swipe down on
+your home screen and search `Calendar`, since it may only be in the App Library.
+If it is truly gone, open the **App Store**, search **Calendar**, and look for
+the one by **Apple**. Reinstalling is free.
+
+**Already have it?** Open it and tap **Calendars** at the bottom. If your Gmail
+address is listed, you are done, skip the rest.
+
+Otherwise connect your account:
+
+**Settings → Apps → Calendar → Calendar Accounts → Add Account → Google**
+
+On older iOS the path is shorter:
+
+**Settings → Calendar → Accounts → Add Account → Google**
+
+Sign in with the same Gmail account as `CALENDAR_ID`, and make sure the
+**Calendars** switch is on. Mail, Contacts and Notes can stay off.
+
+Events appear after about a minute.
+
+### Route C — skip it
+
+Open `calendar.google.com` in your phone browser whenever you want to look. You
+can add it to your home screen from the share menu.
+
+The bot works exactly the same either way. Nothing later in this guide depends
+on Part 7.
 
 ---
 
@@ -545,6 +855,51 @@ ID of the separate calendar you made in step 2.4.
 You are on the phone app. It is not there. Use a computer browser. Also check the
 calendar is under **My calendars**, since you cannot share one you do not own.
 
+**It replies "Something went wrong on my side"**
+
+Your message reached the bot, so Telegram, Render and the allowlist are all
+working. One of the three services behind it is failing.
+
+Send the bot `/diag`. It tests each one and names the broken one:
+
+```
+Self check:
+
+Database:  OK
+Gemini:    FAILED — ClientError: 400 API key not valid
+Calendar:  OK
+```
+
+Then match the message here:
+
+| What /diag says | What to fix |
+| --- | --- |
+| `API key not valid` | `GEMINI_API_KEY` in Render is wrong. Copy it again from AI Studio. |
+| `models/... is not found` | `GEMINI_MODEL` is wrong or no longer free. See step 2.5. |
+| `RESOURCE_EXHAUSTED` or `429` | Free daily requests used up. Wait until tomorrow, or set `GEMINI_MODEL` to `gemini-3.5-flash-lite`. |
+| `Service account info was not in the expected format` | `SERVICE_ACCOUNT_JSON` is incomplete. Paste the whole file again, see step 5.3. |
+| `Permission denied` on Calendar | Step 2.4 was missed, or the permission is not **Make changes to events**. |
+| `Calendar not found` | `CALENDAR_ID` is wrong. It must be your Gmail address exactly. |
+| `has not been used in project` | The Calendar API is not switched on. Do step 2.2. |
+| `Database: FAILED` | `DATABASE_URL` is wrong, or your Neon project is paused. Open Neon and check. |
+
+The full error is also in Render under the **Logs** tab. Newest lines are at the
+bottom.
+
+**An error mentioning `thought_signature`**
+
+Gemini 3 models will not accept a tool conversation unless each function call
+carries a signature, and signatures only exist when the model actually thinks.
+The code now forces thinking on and drops unsigned extra calls, so this should
+not happen. If it does:
+
+1. In Render, **Environment**, set `THINKING_LEVEL` to `medium`
+2. If that does not help, try a different model in `GEMINI_MODEL`
+
+Send `/diag` in the chat to list the models your key can use. Note that
+`gemini-2.5-*` appears in that list but is closed to new API keys, so it will
+return 404.
+
 **"Sorry, I could not finish that"**
 
 Usually the Gemini free daily limit, or a model name that is no longer free.
@@ -578,9 +933,11 @@ git commit -m "what changed"
 git push
 ```
 
-If you used Route A and have no Git installed, you can edit any file directly on
-the GitHub website: open the file, click the pencil icon, change it, then click
-**Commit changes**.
+If you used Route A, do it in GitHub Desktop instead: it lists your changes,
+type a summary, click **Commit to main**, then click **Push origin**.
+
+You can also edit any single file on the GitHub website: open the file, click the
+pencil icon, change it, then click **Commit changes**.
 
 Render rebuilds and redeploys by itself. That is the whole deploy process now.
 
