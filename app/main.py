@@ -4,7 +4,7 @@ import os
 
 from flask import Flask, jsonify, request
 
-from . import agent, security, store, telegram
+from . import agent, brief, diagnostics, security, store, telegram
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 log = logging.getLogger(__name__)
@@ -18,7 +18,10 @@ HELP_TEXT = (
     "  What is on this week?\n"
     "  Remind me to call mum at 6pm\n"
     "  Note: parking bay 42\n\n"
-    "/reset clears our conversation history."
+    "/reset clears our conversation history.\n"
+    "/diag checks that my services are working.\n"
+    "/chatid shows the ID of this chat, for adding groups.\n"
+    "/morning shows today's schedule."
 )
 
 
@@ -41,9 +44,20 @@ def _handle_command(chat_id: int, text: str) -> bool:
     if command in ("/start", "/help"):
         telegram.send_message(chat_id, HELP_TEXT)
         return True
+    if command == "/morning":
+        telegram.send_message(chat_id, brief.build(chat_id))
+        return True
+    if command == "/chatid":
+        # Group IDs are negative and cannot be looked up any other way while a
+        # webhook is active, so the bot reports the id of wherever it is asked.
+        telegram.send_message(chat_id, f"Chat ID: {chat_id}")
+        return True
     if command == "/reset":
         store.clear_history(chat_id)
         telegram.send_message(chat_id, "History cleared.")
+        return True
+    if command == "/diag":
+        telegram.send_message(chat_id, diagnostics.run_all())
         return True
     return False
 
@@ -79,10 +93,16 @@ def telegram_webhook():
             return jsonify(status="command"), 200
         telegram.send_typing(chat_id)
         telegram.send_message(chat_id, agent.handle_message(chat_id, text))
-    except Exception:
+    except Exception as exc:
         log.exception("Failed to handle update %s", update_id)
+        # Single known user, so the real reason is more useful than a vague line.
+        detail = str(exc).replace("\n", " ").strip()[:300]
         try:
-            telegram.send_message(chat_id, "Something went wrong on my side. Please try again.")
+            telegram.send_message(
+                chat_id,
+                f"Something went wrong on my side.\n\n{type(exc).__name__}: {detail}"
+                "\n\nSend /diag to see which service is failing.",
+            )
         except telegram.TelegramError:
             log.exception("Could not deliver the error notice")
 
@@ -96,6 +116,7 @@ def due_reminders():
         return jsonify(error="forbidden"), 403
 
     store.purge_old_updates()
+    briefs = brief.send_if_due()
     delivered, failed = 0, 0
     for reminder in store.claim_due_reminders():
         try:
@@ -105,7 +126,7 @@ def due_reminders():
             failed += 1
             log.exception("Could not deliver reminder %s", reminder["id"])
 
-    return jsonify(delivered=delivered, failed=failed), 200
+    return jsonify(delivered=delivered, failed=failed, briefs=briefs), 200
 
 
 @app.get("/healthz")
