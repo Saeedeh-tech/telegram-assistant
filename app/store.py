@@ -43,6 +43,10 @@ CREATE TABLE IF NOT EXISTS reminders (
     sent_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS reminders_pending ON reminders (due_at) WHERE NOT sent;
+CREATE TABLE IF NOT EXISTS daily_briefs (
+    brief_date DATE PRIMARY KEY,
+    sent_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 # min_size 0 lets the database scale to zero while the bot is idle, which is
@@ -98,6 +102,17 @@ def purge_old_updates() -> int:
     cutoff = datetime.now(timezone.utc) - SEEN_UPDATE_RETENTION
     with _connection() as conn:
         return conn.execute("DELETE FROM seen_updates WHERE seen_at < %s", (cutoff,)).rowcount
+
+
+def claim_daily_brief(brief_date) -> bool:
+    """Return True only for the first caller on a given date."""
+    with _connection() as conn:
+        row = conn.execute(
+            "INSERT INTO daily_briefs (brief_date) VALUES (%s)"
+            " ON CONFLICT DO NOTHING RETURNING brief_date",
+            (brief_date,),
+        ).fetchone()
+    return row is not None
 
 
 def load_history(chat_id: int) -> list[dict]:
