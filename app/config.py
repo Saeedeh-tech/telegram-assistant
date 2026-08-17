@@ -101,6 +101,8 @@ DEFAULT_WEATHER_LOCATION = os.environ.get("DEFAULT_WEATHER_LOCATION", "Perth, Au
 EXPENSES_SPREADSHEET_ID = os.environ.get("EXPENSES_SPREADSHEET_ID", "").strip()
 EXPENSES_SHEET_NAME = os.environ.get("EXPENSES_SHEET_NAME", "Expenses")
 
-MAX_TOOL_STEPS = int(os.environ.get("MAX_TOOL_STEPS", "6"))
+# Each step is a separate API request, and free tiers cap requests per minute,
+# so a lower ceiling keeps one message from exhausting the minute's allowance.
+MAX_TOOL_STEPS = int(os.environ.get("MAX_TOOL_STEPS", "4"))
 MAX_HISTORY_TURNS = int(os.environ.get("MAX_HISTORY_TURNS", "20"))
 DATABASE_URL = _required("DATABASE_URL")
