@@ -5,28 +5,18 @@ with, which avoids an interactive OAuth consent flow on a headless service.
 """
 import logging
 
-from google.oauth2 import service_account
-from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from .. import config, timeparse
+from .. import config, google_auth, timeparse
 from . import register
 
 log = logging.getLogger(__name__)
 
-SCOPES = ["https://www.googleapis.com/auth/calendar.events"]
 MAX_LIST_RESULTS = 25
-_service = None
 
 
 def _calendar():
-    global _service
-    if _service is None:
-        credentials = service_account.Credentials.from_service_account_info(
-            config.SERVICE_ACCOUNT_INFO, scopes=SCOPES
-        )
-        _service = build("calendar", "v3", credentials=credentials, cache_discovery=False)
-    return _service
+    return google_auth.calendar()
 
 
 def _describe(event: dict) -> dict:
@@ -133,25 +123,45 @@ def list_calendar_events(
         raise ValueError("Range end must be after range start")
 
     limit = max(1, min(int(max_results), MAX_LIST_RESULTS))
-    try:
-        response = (
-            _calendar()
-            .events()
-            .list(
-                calendarId=config.CALENDAR_ID,
-                timeMin=timeparse.to_iso(range_start),
-                timeMax=timeparse.to_iso(range_end),
-                singleEvents=True,
-                orderBy="startTime",
-                maxResults=limit,
-            )
-            .execute()
-        )
-    except HttpError as exc:
-        return {"error": _explain(exc)}
 
-    events = [_describe(item) for item in response.get("items", [])]
-    return {"count": len(events), "events": events}
+    # The main calendar plus any read-only extras, such as a holiday feed.
+    events, unreachable = [], []
+    for calendar_id in (config.CALENDAR_ID, *config.EXTRA_CALENDAR_IDS):
+        try:
+            response = (
+                _calendar()
+                .events()
+                .list(
+                    calendarId=calendar_id,
+                    timeMin=timeparse.to_iso(range_start),
+                    timeMax=timeparse.to_iso(range_end),
+                    singleEvents=True,
+                    orderBy="startTime",
+                    maxResults=limit,
+                )
+                .execute()
+            )
+        except HttpError as exc:
+            if calendar_id == config.CALENDAR_ID:
+                return {"error": _explain(exc)}
+            # An extra calendar failing must not hide the real diary.
+            log.warning("Could not read extra calendar %s", calendar_id)
+            unreachable.append(calendar_id)
+            continue
+
+        for item in response.get("items", []):
+            described = _describe(item)
+            described["read_only"] = calendar_id != config.CALENDAR_ID
+            events.append(described)
+
+    events.sort(key=lambda e: e["start"] or "")
+    result = {"count": len(events), "events": events[:limit]}
+    if unreachable:
+        result["unreachable_calendars"] = unreachable
+    return result
+
+
+
 
 
 @register(

@@ -59,4 +59,4 @@ def run(name: str, chat_id: int, arguments: dict) -> dict:
 
 
 # Import for side effects: each module registers its tools on import.
-from . import calendar_tools, messaging, notes  # noqa: E402,F401
+from . import calendar_tools, expenses, messaging, notes, weather  # noqa: E402,F401
