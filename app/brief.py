@@ -1,23 +1,22 @@
-"""Daily brief: what is on today.
+"""Text for the scheduled messages.
 
-Sent by /morning on demand, and once each morning by the existing reminder
-sweep, so no second scheduled job is needed.
+Nothing here calls Gemini: the calendar, database and weather are read
+directly, so scheduled jobs cost nothing against the AI quota.
 """
 import logging
 from datetime import timedelta
 
-from . import config, store, telegram, timeparse
-from .tools import calendar_tools
+from . import config, store, timeparse
+from .tools import calendar_tools, expenses, weather
 
 log = logging.getLogger(__name__)
 
 
-def _todays_events(chat_id: int) -> list[dict]:
-    start = timeparse.now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+def _events_between(chat_id: int, start, end) -> list[dict]:
     result = calendar_tools.list_calendar_events(
         chat_id=chat_id,
         start=timeparse.to_iso(start),
-        end=timeparse.to_iso(start + timedelta(days=1)),
+        end=timeparse.to_iso(end),
         max_results=25,
     )
     if "error" in result:
@@ -25,61 +24,118 @@ def _todays_events(chat_id: int) -> list[dict]:
     return result["events"]
 
 
-def _format_event(event: dict) -> str:
+def _midnight(offset_days: int = 0):
+    base = timeparse.now_local().replace(hour=0, minute=0, second=0, microsecond=0)
+    return base + timedelta(days=offset_days)
+
+
+def _clock(event: dict) -> str:
     if event["all_day"]:
-        return f"  all day  {event['title']}"
-    when = timeparse.parse_local(event["start"]).strftime("%H:%M")
+        return "all day"
+    return timeparse.parse_local(event["start"]).strftime("%H:%M")
+
+
+def _format_event(event: dict) -> str:
     where = f"  ({event['location']})" if event.get("location") else ""
-    return f"  {when}  {event['title']}{where}"
+    return f"  {_clock(event)}  {event['title']}{where}"
 
 
-def build(chat_id: int) -> str:
-    """Compose the brief. Never raises: a broken part is reported in place."""
-    today = timeparse.now_local()
-    lines = [today.strftime("%A %d %B"), ""]
+def _day_view(chat_id: int, offset_days: int, heading: str) -> str:
+    """One day of events, plus that day's reminders."""
+    start = _midnight(offset_days)
+    end = start + timedelta(days=1)
+    lines = [f"{heading} — {start.strftime('%A %d %B')}", ""]
 
     try:
-        events = _todays_events(chat_id)
+        events = _events_between(chat_id, start, end)
         lines.append("Calendar:")
         lines.extend([_format_event(e) for e in events] or ["  nothing scheduled"])
     except Exception as exc:
-        log.exception("Could not read the calendar for the brief")
+        log.exception("Calendar unavailable for the brief")
         lines.append(f"Calendar: unavailable ({type(exc).__name__})")
 
     try:
-        end_of_day = today.replace(hour=23, minute=59, second=59)
         due = [
             r for r in store.list_pending_reminders(chat_id)
-            if timeparse.parse_local(r["due_at"].isoformat()) <= end_of_day
+            if start <= timeparse.parse_local(r["due_at"].isoformat()) < end
         ]
         if due:
-            lines += ["", "Reminders today:"]
-            lines += [f"  {timeparse.parse_local(r['due_at'].isoformat()).strftime('%H:%M')}  {r['text']}" for r in due]
+            lines += ["", "Reminders:"]
+            lines += [
+                f"  {timeparse.parse_local(r['due_at'].isoformat()).strftime('%H:%M')}  {r['text']}"
+                for r in due
+            ]
     except Exception as exc:
-        log.exception("Could not read reminders for the brief")
+        log.exception("Reminders unavailable for the brief")
         lines.append(f"Reminders: unavailable ({type(exc).__name__})")
 
     return "\n".join(lines)
 
 
-def send_if_due() -> int:
-    """Send the brief once, on or after the configured hour. Returns how many sent.
+def build(chat_id: int) -> str:
+    """Today. Used by /morning."""
+    return _day_view(chat_id, 0, "Today")
 
-    Called from the reminder sweep. The database claim makes this safe to call
-    every 30 minutes: only the first call of the day sends anything.
-    """
-    if config.MORNING_HOUR is None:
-        return 0
-    if timeparse.now_local().hour < config.MORNING_HOUR:
-        return 0
-    if not store.claim_daily_brief(timeparse.now_local().date()):
-        return 0
 
-    sent = 0
-    for chat_id in config.ALLOWED_TELEGRAM_USER_IDS:
-        try:
-            telegram.send_message(chat_id, build(chat_id))
-            sent += 1
-        except telegram.TelegramError:
-            log.exception("Could not deliver the morning brief to %s", chat_id)
-    return sent
+def build_tomorrow(chat_id: int) -> str:
+    return _day_view(chat_id, 1, "Tomorrow")
+
+
+def build_week(chat_id: int) -> str:
+    start = _midnight(1)
+    lines = ["The week ahead", ""]
+    try:
+        events = _events_between(chat_id, start, start + timedelta(days=7))
+    except Exception as exc:
+        return "\n".join(lines + [f"Calendar unavailable ({type(exc).__name__})"])
+
+    if not events:
+        return "\n".join(lines + ["  nothing scheduled"])
+
+    current_day = None
+    for event in events:
+        day = (event["start"] or "")[:10]
+        if day != current_day:
+            current_day = day
+            lines += ["", timeparse.parse_local(f"{day}T00:00:00").strftime("%A %d %B")]
+        lines.append(_format_event(event))
+    return "\n".join(lines)
+
+
+def build_last_month(chat_id: int) -> str | None:
+    """Last month's spending. None when expense logging is switched off."""
+    if not config.EXPENSES_SPREADSHEET_ID:
+        return None
+    last_month = (timeparse.now_local().replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+
+    summary = expenses.expense_summary(chat_id=chat_id, month=last_month)
+    if "error" in summary:
+        return f"Spending for {last_month}: unavailable ({summary['error']})"
+    if not summary["entries"]:
+        return f"Spending for {last_month}: nothing logged."
+
+    lines = [f"Spending for {last_month}", "", f"Total: {summary['total']}", ""]
+    lines += [f"  {name}: {amount}" for name, amount in summary["by_category"].items()]
+    return "\n".join(lines)
+
+
+def rain_warning(chat_id: int) -> str | None:
+    """A warning only when rain is likely. None means stay quiet."""
+    forecast = weather.get_weather(chat_id=chat_id, days=1)
+    if "error" in forecast:
+        log.warning("Rain check failed: %s", forecast["error"])
+        return None
+
+    days = forecast.get("forecast") or []
+    if not days:
+        return None
+    today = days[0]
+    chance = today.get("rain_chance_percent") or 0
+    if chance < config.RAIN_ALERT_PERCENT:
+        return None
+
+    return (
+        f"Rain likely today in {forecast['location']}: {chance}% chance, "
+        f"about {today.get('rain_mm', 0)} mm. {today['condition'].capitalize()}, "
+        f"{today['low_c']} to {today['high_c']}C. Take an umbrella."
+    )

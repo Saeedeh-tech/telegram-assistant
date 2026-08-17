@@ -4,7 +4,7 @@ import os
 
 from flask import Flask, jsonify, request
 
-from . import agent, brief, config, diagnostics, security, store, telegram
+from . import agent, brief, config, diagnostics, jobs, security, store, telegram, timeparse
 
 logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 log = logging.getLogger(__name__)
@@ -21,7 +21,7 @@ HELP_TEXT = (
     "/reset clears our conversation history.\n"
     "/diag checks that my services are working.\n"
     "/chatid shows the ID of this chat, for adding groups.\n"
-    "/morning shows today's schedule."
+    "/morning today, /tomorrow, /week ahead."
 )
 
 
@@ -68,6 +68,12 @@ def _handle_command(chat_id: int, text: str) -> bool:
         return True
     if command == "/morning":
         telegram.send_message(chat_id, brief.build(chat_id))
+        return True
+    if command == "/tomorrow":
+        telegram.send_message(chat_id, brief.build_tomorrow(chat_id))
+        return True
+    if command == "/week":
+        telegram.send_message(chat_id, brief.build_week(chat_id))
         return True
     if command == "/chatid":
         # Group IDs are negative and cannot be looked up any other way while a
@@ -146,7 +152,7 @@ def due_reminders():
         return jsonify(error="forbidden"), 403
 
     store.purge_old_updates()
-    briefs = brief.send_if_due()
+    fired = jobs.run_due(timeparse.now_local())
     delivered, failed = 0, 0
     for reminder in store.claim_due_reminders():
         try:
@@ -156,7 +162,7 @@ def due_reminders():
             failed += 1
             log.exception("Could not deliver reminder %s", reminder["id"])
 
-    return jsonify(delivered=delivered, failed=failed, briefs=briefs), 200
+    return jsonify(delivered=delivered, failed=failed, jobs=fired), 200
 
 
 @app.get("/healthz")

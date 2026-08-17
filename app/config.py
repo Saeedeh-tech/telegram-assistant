@@ -82,6 +82,13 @@ def _optional_hour(name: str, default: str) -> int | None:
 
 
 MORNING_HOUR = _optional_hour("MORNING_HOUR", "7")
+EVENING_HOUR = _optional_hour("EVENING_HOUR", "20")
+RAIN_ALERT_HOUR = _optional_hour("RAIN_ALERT_HOUR", "7")
+WEEKLY_SUMMARY_HOUR = _optional_hour("WEEKLY_SUMMARY_HOUR", "18")   # Sundays
+MONTHLY_SUMMARY_HOUR = _optional_hour("MONTHLY_SUMMARY_HOUR", "9")  # 1st of month
+
+# Only warn about rain at or above this chance.
+RAIN_ALERT_PERCENT = int(os.environ.get("RAIN_ALERT_PERCENT", "50"))
 
 # Audio costs far more tokens than text, so long notes are refused politely.
 MAX_VOICE_SECONDS = int(os.environ.get("MAX_VOICE_SECONDS", "120"))
@@ -91,8 +98,10 @@ EXTRA_CALENDAR_IDS = tuple(
     c.strip() for c in os.environ.get("EXTRA_CALENDAR_IDS", "").split(",") if c.strip()
 )
 
-ENABLE_WEB_SEARCH = os.environ.get("ENABLE_WEB_SEARCH", "true").strip().lower() not in (
-    "false", "off", "0", "no"
+# Off by default: search grounding adds requests per turn and exhausts a free
+# tier's per-minute cap quickly. Set to true only if the quota allows it.
+ENABLE_WEB_SEARCH = os.environ.get("ENABLE_WEB_SEARCH", "false").strip().lower() in (
+    "true", "on", "1", "yes"
 )
 
 DEFAULT_WEATHER_LOCATION = os.environ.get("DEFAULT_WEATHER_LOCATION", "Perth, Australia")

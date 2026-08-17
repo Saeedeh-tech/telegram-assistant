@@ -43,9 +43,11 @@ CREATE TABLE IF NOT EXISTS reminders (
     sent_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS reminders_pending ON reminders (due_at) WHERE NOT sent;
-CREATE TABLE IF NOT EXISTS daily_briefs (
-    brief_date DATE PRIMARY KEY,
-    sent_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS job_runs (
+    job      TEXT NOT NULL,
+    run_date DATE NOT NULL,
+    ran_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (job, run_date)
 );
 """
 
@@ -104,13 +106,17 @@ def purge_old_updates() -> int:
         return conn.execute("DELETE FROM seen_updates WHERE seen_at < %s", (cutoff,)).rowcount
 
 
-def claim_daily_brief(brief_date) -> bool:
-    """Return True only for the first caller on a given date."""
+def claim_job(job: str, run_date) -> bool:
+    """Return True only for the first caller of this job on this date.
+
+    The sweep runs every 30 minutes, so each scheduled job must claim its slot
+    before sending anything.
+    """
     with _connection() as conn:
         row = conn.execute(
-            "INSERT INTO daily_briefs (brief_date) VALUES (%s)"
-            " ON CONFLICT DO NOTHING RETURNING brief_date",
-            (brief_date,),
+            "INSERT INTO job_runs (job, run_date) VALUES (%s, %s)"
+            " ON CONFLICT DO NOTHING RETURNING job",
+            (job, run_date),
         ).fetchone()
     return row is not None
 
