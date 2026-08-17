@@ -85,6 +85,33 @@ def _search_was_rejected(exc: Exception) -> bool:
     return _search_enabled and any(term in message for term in SEARCH_REJECTED)
 
 
+QUOTA_HINT = (
+    "Gemini refused with a rate limit. This is usually the per-minute cap, so "
+    "waiting a minute normally fixes it. Check ai.dev/rate-limit: if the daily "
+    "number is near its limit instead, switch GEMINI_MODEL in Render, because "
+    "each model has its own separate quota."
+)
+
+
+def _retry_after_seconds(exc) -> float | None:
+    """Seconds Google asks us to wait, or None when it gives no such advice.
+
+    A per-minute limit comes with RetryInfo. A daily limit does not, and
+    retrying it only burns more of the quota, so the two must be told apart.
+    """
+    payload = getattr(exc, "details", None)
+    if not isinstance(payload, dict):
+        return None
+    for detail in payload.get("error", {}).get("details", []):
+        if str(detail.get("@type", "")).endswith("RetryInfo"):
+            raw = str(detail.get("retryDelay", "")).rstrip("s")
+            try:
+                return float(raw)
+            except ValueError:
+                return None
+    return None
+
+
 def _generate(contents: list[types.Content]):
     """Call Gemini, retrying rate limits and transient server errors."""
     global _search_enabled
@@ -105,6 +132,15 @@ def _generate(contents: list[types.Content]):
                 continue
             if "thought_signature" in str(exc):
                 raise RuntimeError(SIGNATURE_HINT) from exc
+
+            if getattr(exc, "code", None) == 429:
+                wait = _retry_after_seconds(exc)
+                if wait is None:
+                    raise RuntimeError(QUOTA_HINT) from exc
+                log.warning("Rate limited, waiting %ss as instructed", wait)
+                time.sleep(min(wait, 30))
+                continue
+
             if getattr(exc, "code", None) not in RETRYABLE_STATUS:
                 raise
             last_error = exc
