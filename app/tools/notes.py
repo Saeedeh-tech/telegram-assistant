@@ -74,26 +74,81 @@ def delete_note(chat_id: int, note_id: str) -> dict:
     name="set_reminder",
     description=(
         "Schedule a reminder message. `due_at` is an ISO 8601 local datetime and "
-        "must be in the future. The user receives it here in Telegram."
+        "must be in the future. Set `repeat` for something that happens again, "
+        "such as bin night or rent."
     ),
     parameters={
         "type": "object",
         "properties": {
             "text": {"type": "string", "description": "What to remind the user about"},
-            "due_at": {"type": "string", "description": "ISO 8601 local datetime"},
+            "due_at": {"type": "string", "description": "ISO 8601 local datetime of the first one"},
+            "repeat": {
+                "type": "string",
+                "enum": list(timeparse.REPEAT_RULES),
+                "description": "How often it repeats. Leave out for a one-off.",
+            },
         },
         "required": ["text", "due_at"],
     },
 )
-def set_reminder(chat_id: int, text: str, due_at: str) -> dict:
+def set_reminder(chat_id: int, text: str, due_at: str, repeat: str | None = None) -> dict:
     cleaned = text.strip()
     if not cleaned:
         raise ValueError("Reminder text cannot be empty")
     due = timeparse.parse_local(due_at)
     if due <= timeparse.now_local():
         raise ValueError("Reminder time must be in the future")
-    reminder_id = store.add_reminder(chat_id, cleaned, due)
-    return {"scheduled": True, "reminder_id": reminder_id, "due": timeparse.to_text(due)}
+
+    rule = (repeat or "").strip().lower() or None
+    if rule and rule not in timeparse.REPEAT_RULES:
+        raise ValueError(f"repeat must be one of: {', '.join(timeparse.REPEAT_RULES)}")
+
+    reminder_id = store.add_reminder(chat_id, cleaned, due, rule)
+    return {
+        "scheduled": True,
+        "reminder_id": reminder_id,
+        "due": timeparse.to_text(due),
+        "repeats": rule or "once",
+    }
+
+
+@register(
+    name="cancel_reminder",
+    description="Cancel a pending reminder. Get its id from list_reminders first.",
+    parameters={
+        "type": "object",
+        "properties": {"reminder_id": {"type": "string"}},
+        "required": ["reminder_id"],
+    },
+)
+def cancel_reminder(chat_id: int, reminder_id: str) -> dict:
+    if store.cancel_reminder(reminder_id, chat_id):
+        return {"cancelled": True}
+    return {"error": "No pending reminder with that id belongs to this chat"}
+
+
+@register(
+    name="reschedule_reminder",
+    description=(
+        "Move a pending reminder to a new time. Get its id from list_reminders "
+        "first. `due_at` is an ISO 8601 local datetime in the future."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "reminder_id": {"type": "string"},
+            "due_at": {"type": "string", "description": "New ISO 8601 local datetime"},
+        },
+        "required": ["reminder_id", "due_at"],
+    },
+)
+def reschedule_reminder(chat_id: int, reminder_id: str, due_at: str) -> dict:
+    due = timeparse.parse_local(due_at)
+    if due <= timeparse.now_local():
+        raise ValueError("The new time must be in the future")
+    if store.reschedule_reminder(reminder_id, chat_id, due):
+        return {"rescheduled": True, "due": timeparse.to_text(due)}
+    return {"error": "No pending reminder with that id belongs to this chat"}
 
 
 @register(
@@ -106,7 +161,12 @@ def list_reminders(chat_id: int) -> dict:
     return {
         "count": len(pending),
         "reminders": [
-            {"id": item["id"], "text": item["text"], "due": timeparse.to_text(item["due_at"])}
+            {
+                "id": item["id"],
+                "text": item["text"],
+                "due": timeparse.to_text(item["due_at"]),
+                "repeats": item.get("repeat_rule") or "once",
+            }
             for item in pending
         ],
     }
