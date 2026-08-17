@@ -86,6 +86,21 @@ MORNING_HOUR = _optional_hour("MORNING_HOUR", "7")
 # Audio costs far more tokens than text, so long notes are refused politely.
 MAX_VOICE_SECONDS = int(os.environ.get("MAX_VOICE_SECONDS", "120"))
 
+# Extra calendars the bot may read but never write, such as a holiday feed.
+EXTRA_CALENDAR_IDS = tuple(
+    c.strip() for c in os.environ.get("EXTRA_CALENDAR_IDS", "").split(",") if c.strip()
+)
+
+ENABLE_WEB_SEARCH = os.environ.get("ENABLE_WEB_SEARCH", "true").strip().lower() not in (
+    "false", "off", "0", "no"
+)
+
+DEFAULT_WEATHER_LOCATION = os.environ.get("DEFAULT_WEATHER_LOCATION", "Perth, Australia")
+
+# Blank disables expense logging.
+EXPENSES_SPREADSHEET_ID = os.environ.get("EXPENSES_SPREADSHEET_ID", "").strip()
+EXPENSES_SHEET_NAME = os.environ.get("EXPENSES_SHEET_NAME", "Expenses")
+
 MAX_TOOL_STEPS = int(os.environ.get("MAX_TOOL_STEPS", "6"))
 MAX_HISTORY_TURNS = int(os.environ.get("MAX_HISTORY_TURNS", "20"))
 DATABASE_URL = _required("DATABASE_URL")
