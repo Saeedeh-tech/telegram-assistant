@@ -1,172 +1,174 @@
-"""Gemini agent loop: turn a chat message into tool calls and a reply."""
+"""Flask entrypoint: Telegram webhook, reminder delivery, health check."""
 import logging
-import time
+import os
 
-from google import genai
-from google.genai import errors as genai_errors
-from google.genai import types
+from flask import Flask, jsonify, request
 
-from . import config, store, timeparse, tools
+from . import agent, brief, config, diagnostics, security, store, telegram
 
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 log = logging.getLogger(__name__)
 
-RETRY_DELAYS_SECONDS = (1, 2, 4)
-RETRYABLE_STATUS = {429, 500, 502, 503, 504}
-FALLBACK_REPLY = "Sorry, I could not finish that. Please try again."
+app = Flask(__name__)
 
-_client: genai.Client | None = None
-
-
-def gemini() -> genai.Client:
-    global _client
-    if _client is None:
-        _client = genai.Client(api_key=config.GEMINI_API_KEY)
-    return _client
-
-
-def _system_instruction() -> str:
-    return (
-        "You are a personal assistant reachable through Telegram. "
-        f"The user's timezone is {config.TIMEZONE_NAME}. "
-        f"The current local time is {timeparse.to_iso(timeparse.now_local())}. "
-        "Resolve relative times such as 'tomorrow at 3pm' against that time and "
-        "always pass ISO 8601 local datetimes to tools.\n\n"
-        "Use tools when the user asks you to do something. Never claim an action "
-        "succeeded unless the tool result says so. Before sending a message to "
-        "another person, show the user the exact wording and wait for them to "
-        "agree. Reply in plain text without Markdown formatting, and keep replies "
-        "short, using simple words and short sentences."
-    )
-
-
-def _generation_config() -> types.GenerateContentConfig:
-    return types.GenerateContentConfig(
-        system_instruction=_system_instruction(),
-        tools=[types.Tool(function_declarations=tools.function_declarations())],
-        # Tools run here so results can be validated and logged.
-        # maximum_remote_calls=None stops the SDK warning about an unused limit.
-        automatic_function_calling=types.AutomaticFunctionCallingConfig(
-            disable=True, maximum_remote_calls=None
-        ),
-        thinking_config=types.ThinkingConfig(thinking_level=config.THINKING_LEVEL),
-    )
-
-
-def _to_contents(history: list[dict]) -> list[types.Content]:
-    return [
-        types.Content(role=turn["role"], parts=[types.Part(text=turn["text"])])
-        for turn in history
-        if turn.get("text")
-    ]
-
-
-SIGNATURE_HINT = (
-    "The model rejected the tool conversation (thought_signature). "
-    "Try a different Gemini 3 flash model in GEMINI_MODEL. "
-    "Send /diag to list the models your key can use."
+HELP_TEXT = (
+    "I can help with your calendar, notes, reminders and Telegram messages.\n\n"
+    "Try:\n"
+    "  Book dentist Tuesday 9am\n"
+    "  What is on this week?\n"
+    "  Remind me to call mum at 6pm\n"
+    "  Note: parking bay 42\n\n"
+    "/reset clears our conversation history.\n"
+    "/diag checks that my services are working.\n"
+    "/chatid shows the ID of this chat, for adding groups.\n"
+    "/morning shows today's schedule."
 )
 
 
-def _generate(contents: list[types.Content]):
-    """Call Gemini, retrying rate limits and transient server errors."""
-    last_error: Exception | None = None
-    for delay in (0, *RETRY_DELAYS_SECONDS):
-        if delay:
-            time.sleep(delay)
+def _extract_message(update: dict) -> tuple[int, int, str, dict | None] | None:
+    """Return (chat_id, user_id, text, voice), or None for updates we skip.
+
+    `voice` covers both voice notes and forwarded audio; `text` carries any
+    caption, which the user may use to add instructions to a recording.
+    """
+    message = update.get("message")
+    if not isinstance(message, dict):
+        return None
+    chat_id = message.get("chat", {}).get("id")
+    user_id = message.get("from", {}).get("id")
+    if chat_id is None or user_id is None:
+        return None
+
+    text = (message.get("text") or message.get("caption") or "").strip()
+    voice = message.get("voice") or message.get("audio")
+    return chat_id, user_id, text, (voice if isinstance(voice, dict) else None)
+
+
+def _transcribable(chat_id: int, voice: dict) -> tuple[bytes, str] | None:
+    """Download a voice note, or explain why it cannot be used."""
+    seconds = voice.get("duration", 0)
+    if seconds > config.MAX_VOICE_SECONDS:
+        telegram.send_message(
+            chat_id,
+            f"That recording is {seconds} seconds. Please keep voice messages "
+            f"under {config.MAX_VOICE_SECONDS} seconds.",
+        )
+        return None
+    file_id = voice.get("file_id")
+    if not file_id:
+        return None
+    return telegram.download_file(file_id), voice.get("mime_type") or "audio/ogg"
+
+
+def _handle_command(chat_id: int, text: str) -> bool:
+    """Handle slash commands. Returns True when the message was a command."""
+    command = text.split()[0].split("@")[0].lower()
+    if command in ("/start", "/help"):
+        telegram.send_message(chat_id, HELP_TEXT)
+        return True
+    if command == "/morning":
+        telegram.send_message(chat_id, brief.build(chat_id))
+        return True
+    if command == "/chatid":
+        # Group IDs are negative and cannot be looked up any other way while a
+        # webhook is active, so the bot reports the id of wherever it is asked.
+        telegram.send_message(chat_id, f"Chat ID: {chat_id}")
+        return True
+    if command == "/reset":
+        store.clear_history(chat_id)
+        telegram.send_message(chat_id, "History cleared.")
+        return True
+    if command == "/diag":
+        telegram.send_message(chat_id, diagnostics.run_all())
+        return True
+    return False
+
+
+@app.post("/telegram/webhook")
+def telegram_webhook():
+    if not security.is_telegram_request(request.headers):
+        return jsonify(error="forbidden"), 403
+
+    update = request.get_json(silent=True) or {}
+    update_id = update.get("update_id")
+
+    # Telegram redelivers on timeout, so 200 is returned even on failure and
+    # every update is processed at most once.
+    if update_id is not None and not store.claim_update(update_id):
+        return jsonify(status="duplicate"), 200
+
+    extracted = _extract_message(update)
+    if extracted is None:
+        return jsonify(status="ignored"), 200
+
+    chat_id, user_id, text, voice = extracted
+    if not security.is_allowed_user(user_id):
+        return jsonify(status="unauthorised"), 200
+
+    # Everything below is wrapped: Telegram retries on any non-2xx reply, so a
+    # failure here must still answer 200 rather than trigger a retry loop.
+    try:
+        if text.startswith("/") and _handle_command(chat_id, text):
+            return jsonify(status="command"), 200
+
+        audio = None
+        if voice:
+            telegram.send_typing(chat_id)
+            audio = _transcribable(chat_id, voice)
+            if audio is None:
+                return jsonify(status="voice rejected"), 200
+        elif not text:
+            telegram.send_message(chat_id, "I can read text and voice messages.")
+            return jsonify(status="unsupported"), 200
+
+        telegram.send_typing(chat_id)
+        telegram.send_message(chat_id, agent.handle_message(chat_id, text, audio=audio))
+    except Exception as exc:
+        log.exception("Failed to handle update %s", update_id)
+        # Single known user, so the real reason is more useful than a vague line.
+        detail = str(exc).replace("\n", " ").strip()[:300]
         try:
-            return gemini().models.generate_content(
-                model=config.GEMINI_MODEL, contents=contents, config=_generation_config()
+            telegram.send_message(
+                chat_id,
+                f"Something went wrong on my side.\n\n{type(exc).__name__}: {detail}"
+                "\n\nSend /diag to see which service is failing.",
             )
-        except genai_errors.APIError as exc:
-            if "thought_signature" in str(exc):
-                raise RuntimeError(SIGNATURE_HINT) from exc
-            if getattr(exc, "code", None) not in RETRYABLE_STATUS:
-                raise
-            last_error = exc
-            log.warning("Gemini call retryable error: %s", exc)
-    raise RuntimeError("Gemini unavailable after retries") from last_error
+        except telegram.TelegramError:
+            log.exception("Could not deliver the error notice")
+
+    return jsonify(status="ok"), 200
 
 
-def _signed_content(content: types.Content) -> types.Content:
-    """Trim the model turn to the parts that can legally be sent back.
+@app.post("/tasks/due-reminders")
+def due_reminders():
+    """Called by Cloud Scheduler; delivers reminders that have come due."""
+    if not security.is_scheduler_request(request.headers):
+        return jsonify(error="forbidden"), 403
 
-    Gemini 3 signs only the first function call when it asks for several at
-    once, but then rejects the unsigned ones on the next request. Dropping them
-    turns parallel calls into sequential ones: the model simply asks again.
+    store.purge_old_updates()
+    briefs = brief.send_if_due()
+    delivered, failed = 0, 0
+    for reminder in store.claim_due_reminders():
+        try:
+            telegram.send_message(reminder["chat_id"], f"Reminder: {reminder['text']}")
+            delivered += 1
+        except telegram.TelegramError:
+            failed += 1
+            log.exception("Could not deliver reminder %s", reminder["id"])
+
+    return jsonify(delivered=delivered, failed=failed, briefs=briefs), 200
+
+
+@app.get("/healthz")
+def healthz():
+    """Shallow by default.
+
+    Render pings this endpoint often. Touching the database here would keep the
+    database awake all month and use up the free compute allowance, so the deep
+    check is opt in: /healthz?deep=1
     """
-    kept, seen_call = [], False
-    for part in content.parts or []:
-        if part.function_call:
-            if seen_call and not part.thought_signature:
-                log.info("Deferring unsigned call %s to the next step", part.function_call.name)
-                break
-            seen_call = True
-        kept.append(part)
-    return types.Content(role=content.role or "model", parts=kept)
-
-
-def _reply_text(response) -> str:
-    if not response.candidates:
-        return "I could not answer that one."
-    parts = response.candidates[0].content.parts or []
-    return "".join(part.text for part in parts if getattr(part, "text", None)).strip()
-
-
-def _function_calls(response) -> list:
-    if not response.candidates:
-        return []
-    parts = response.candidates[0].content.parts or []
-    return [part.function_call for part in parts if getattr(part, "function_call", None)]
-
-
-VOICE_NUDGE = "This is a voice message. Do what it asks."
-
-
-def handle_message(
-    chat_id: int, user_text: str, audio: tuple[bytes, str] | None = None
-) -> str:
-    """Run the tool loop for one message and return the reply text.
-
-    `audio` is (bytes, mime_type). Gemini reads audio directly, so a voice note
-    needs no separate transcription service.
-    """
-    contents = _to_contents(store.load_history(chat_id))
-
-    parts = []
-    if audio:
-        data, mime_type = audio
-        parts.append(types.Part.from_bytes(data=data, mime_type=mime_type))
-        parts.append(types.Part(text=user_text.strip() or VOICE_NUDGE))
-    else:
-        parts.append(types.Part(text=user_text))
-    contents.append(types.Content(role="user", parts=parts))
-
-    # Audio is not replayed on later turns, so history records a stand-in.
-    history_text = user_text.strip() or ("[voice message]" if audio else user_text)
-
-    reply = FALLBACK_REPLY
-    for step in range(config.MAX_TOOL_STEPS):
-        response = _generate(contents)
-        calls = _function_calls(response)
-        if not calls:
-            reply = _reply_text(response) or FALLBACK_REPLY
-            break
-
-        model_turn = _signed_content(response.candidates[0].content)
-        contents.append(model_turn)
-        calls = [p.function_call for p in model_turn.parts if p.function_call]
-        results = []
-        for call in calls:
-            arguments = dict(call.args or {})
-            log.info("Step %d calling tool %s", step + 1, call.name)
-            result = tools.run(call.name, chat_id, arguments)
-            results.append(
-                types.Part.from_function_response(name=call.name, response=result)
-            )
-        contents.append(types.Content(role="user", parts=results))
-    else:
-        log.warning("Tool loop hit the %d step limit", config.MAX_TOOL_STEPS)
-        reply = "That needed too many steps. Could you break it into smaller requests?"
-
-    store.append_history(chat_id, history_text, reply)
-    return reply
+    if request.args.get("deep") != "1":
+        return jsonify(status="ok"), 200
+    if not store.check_connection():
+        return jsonify(status="ok", database="unreachable"), 503
+    return jsonify(status="ok", database="ok"), 200
