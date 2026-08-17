@@ -26,9 +26,25 @@ services:
       - key: TASKS_SECRET
         sync: false
       - key: TELEGRAM_CONTACTS
-        value: "{}"
+        sync: false
+      - key: EXTRA_CALENDAR_IDS
+        sync: false
+      - key: EXPENSES_SPREADSHEET_ID
+        sync: false
+      - key: DEFAULT_WEATHER_LOCATION
+        sync: false
       - key: GEMINI_MODEL
-        value: gemini-3.5-flash
+        value: gemini-3.7-flash
+      - key: THINKING_LEVEL
+        value: low
+      - key: ENABLE_WEB_SEARCH
+        value: "true"
+      - key: EXPENSES_SHEET_NAME
+        value: Expenses
+      - key: MORNING_HOUR
+        value: "7"
+      - key: MAX_VOICE_SECONDS
+        value: "120"
       - key: TIMEZONE
         value: Australia/Perth
       - key: PYTHON_VERSION

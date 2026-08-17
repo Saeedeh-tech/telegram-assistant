@@ -64,6 +64,12 @@ calendar. Instead the bot writes to your Google Calendar, and you add that Googl
 account under iOS Settings → Apps → Calendar → Accounts. Events then appear in
 the normal iOS Calendar app within about a minute.
 
+**Messaging is a notifier, not a way to text people.** A Telegram bot holds a
+separate private conversation with each person, and cannot send anything as the
+user. A message to a contact lands in that person's own chat with the bot, signed
+by the bot, and the owner never sees it. To get a message both people can read,
+add the bot to a group and use the group id as the contact.
+
 **Reminders arrive in Telegram, not iOS Reminders.** iOS Reminders is also closed
 to servers. Reminders are stored in Postgres and a GitHub Actions timer delivers
 them as Telegram messages. This is arguably better, because the notification
@@ -95,6 +101,23 @@ Import it in `app/tools/__init__.py`. Nothing else changes.
 ## Setup
 
 See **SETUP.md** for the full walkthrough, written for a first-time setup.
+
+## What must never be in this repository
+
+Real values live in the host's environment settings, never in a file. The
+repository is safe to make public because it contains no identifying value.
+
+Keep out: bot token, Gemini key, service account JSON, database URL, task
+secret, webhook secret, your calendar ID, spreadsheet IDs, Telegram user or
+group IDs.
+
+Safe to commit: model name, thinking level, timezone, Python version, and the
+other generic switches. In `render.yaml` these are the entries with a literal
+`value`; everything identifying is marked `sync: false`, which makes Render ask
+for it instead of reading it from the file.
+
+`.gitignore` blocks `.env`, `sa-key.json`, `setup.env` and `.secrets` as a
+second line of defence.
 
 ## Cost
 
