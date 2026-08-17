@@ -90,6 +90,12 @@ MONTHLY_SUMMARY_HOUR = _optional_hour("MONTHLY_SUMMARY_HOUR", "9")  # 1st of mon
 # Only warn about rain at or above this chance.
 RAIN_ALERT_PERCENT = int(os.environ.get("RAIN_ALERT_PERCENT", "50"))
 
+# Which day the rain alert reports on: "today" suits a morning alert,
+# "tomorrow" suits an evening one.
+RAIN_ALERT_FOR = os.environ.get("RAIN_ALERT_FOR", "tomorrow").strip().lower()
+if RAIN_ALERT_FOR not in ("today", "tomorrow"):
+    raise ConfigError("RAIN_ALERT_FOR must be 'today' or 'tomorrow'")
+
 # Audio costs far more tokens than text, so long notes are refused politely.
 MAX_VOICE_SECONDS = int(os.environ.get("MAX_VOICE_SECONDS", "120"))
 
