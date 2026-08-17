@@ -83,6 +83,9 @@ def _optional_hour(name: str, default: str) -> int | None:
 
 MORNING_HOUR = _optional_hour("MORNING_HOUR", "7")
 
+# Audio costs far more tokens than text, so long notes are refused politely.
+MAX_VOICE_SECONDS = int(os.environ.get("MAX_VOICE_SECONDS", "120"))
+
 MAX_TOOL_STEPS = int(os.environ.get("MAX_TOOL_STEPS", "6"))
 MAX_HISTORY_TURNS = int(os.environ.get("MAX_HISTORY_TURNS", "20"))
 DATABASE_URL = _required("DATABASE_URL")
