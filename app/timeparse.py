@@ -1,4 +1,5 @@
 """Local time helpers shared by the calendar and reminder tools."""
+from calendar import monthrange
 from datetime import datetime, timedelta
 
 from . import config
@@ -40,3 +41,58 @@ def to_iso(value: datetime) -> str:
 
 def to_text(value: datetime) -> str:
     return value.astimezone(config.LOCAL_TZ).strftime("%a %d %b %Y, %H:%M")
+
+
+REPEAT_RULES = ("daily", "weekdays", "weekly", "fortnightly", "monthly", "yearly")
+
+
+def _add_months(value: datetime, months: int) -> datetime:
+    """Add months, clamping to the last valid day.
+
+    31 January plus one month is 28 or 29 February, not an error.
+    """
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    day = min(value.day, monthrange(year, month)[1])
+    return value.replace(year=year, month=month, day=day)
+
+
+def next_occurrence(
+    current: datetime, rule: str, anchor: datetime | None = None
+) -> datetime | None:
+    """The next time a repeating reminder is due, always in the future.
+
+    Month and year steps are measured from `anchor`, the date the reminder was
+    first set. Measuring from the previous occurrence instead would let the
+    31st clamp to the 28th in February and then stay there forever.
+
+    Steps forward until the result is in the future, so a scheduler outage of
+    several days produces one reminder rather than a backlog.
+    """
+    rule = (rule or "").strip().lower()
+    if rule not in REPEAT_RULES:
+        return None
+
+    now = now_local()
+    start = (anchor or current).astimezone(config.LOCAL_TZ)
+    upcoming = current.astimezone(config.LOCAL_TZ)
+
+    for step in range(1, 501):  # ceiling stops any chance of a hang
+        if rule == "monthly":
+            upcoming = _add_months(start, step)
+        elif rule == "yearly":
+            upcoming = _add_months(start, step * 12)
+        elif rule == "daily":
+            upcoming += timedelta(days=1)
+        elif rule == "weekly":
+            upcoming += timedelta(weeks=1)
+        elif rule == "fortnightly":
+            upcoming += timedelta(weeks=2)
+        elif rule == "weekdays":
+            upcoming += timedelta(days=1)
+            while upcoming.weekday() >= 5:  # Saturday, Sunday
+                upcoming += timedelta(days=1)
+        if upcoming > now:
+            return upcoming
+    return None
