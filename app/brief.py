@@ -120,22 +120,30 @@ def build_last_month(chat_id: int) -> str | None:
 
 
 def rain_warning(chat_id: int) -> str | None:
-    """A warning only when rain is likely. None means stay quiet."""
-    forecast = weather.get_weather(chat_id=chat_id, days=1)
+    """A warning only when rain is likely. None means stay quiet.
+
+    Reports on today or tomorrow depending on RAIN_ALERT_FOR, so an evening
+    alert can warn about the morning ahead.
+    """
+    tomorrow = config.RAIN_ALERT_FOR == "tomorrow"
+    forecast = weather.get_weather(chat_id=chat_id, days=2 if tomorrow else 1)
     if "error" in forecast:
         log.warning("Rain check failed: %s", forecast["error"])
         return None
 
     days = forecast.get("forecast") or []
-    if not days:
+    index = 1 if tomorrow else 0
+    if len(days) <= index:
         return None
-    today = days[0]
-    chance = today.get("rain_chance_percent") or 0
+
+    day = days[index]
+    chance = day.get("rain_chance_percent") or 0
     if chance < config.RAIN_ALERT_PERCENT:
         return None
 
     return (
-        f"Rain likely today in {forecast['location']}: {chance}% chance, "
-        f"about {today.get('rain_mm', 0)} mm. {today['condition'].capitalize()}, "
-        f"{today['low_c']} to {today['high_c']}C. Take an umbrella."
+        f"Rain likely {config.RAIN_ALERT_FOR} in {forecast['location']}: "
+        f"{chance}% chance, about {day.get('rain_mm', 0)} mm. "
+        f"{day['condition'].capitalize()}, {day['low_c']} to {day['high_c']}C. "
+        f"Take an umbrella."
     )
